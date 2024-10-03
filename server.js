@@ -1,3 +1,4 @@
+const https = require('https');
 const express = require('express');
 const webPush = require('web-push');
 const bodyParser = require('body-parser');
@@ -64,8 +65,12 @@ app.post('/sendNotification', (req, res) => {
     });
 });
 
+const options = {
+  key: fs.readFileSync('/private.key', 'utf8'),
+  cert: fs.readFileSync('/certificate.crt', 'utf8'),
+};
 
 const PORT = 8000;
-app.listen(PORT, () => {
+https.createServer(options, app).listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
