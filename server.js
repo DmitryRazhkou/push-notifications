@@ -2,6 +2,7 @@ const https = require('https');
 const express = require('express');
 const webPush = require('web-push');
 const bodyParser = require('body-parser');
+const fs = require('fs');
 
 const app = express();
 app.use(bodyParser.json());
@@ -66,8 +67,8 @@ app.post('/sendNotification', (req, res) => {
 });
 
 const options = {
-  key: fs.readFileSync('/private.key', 'utf8'),
-  cert: fs.readFileSync('/certificate.crt', 'utf8'),
+  key: fs.readFileSync('./private.key', 'utf8'),
+  cert: fs.readFileSync('./certificate.crt', 'utf8'),
 };
 
 const PORT = 8000;
