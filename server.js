@@ -3,8 +3,12 @@ const express = require('express');
 const webPush = require('web-push');
 const bodyParser = require('body-parser');
 const fs = require('fs');
+const cors = require('cors');
+
 
 const app = express();
+
+app.use(cors());
 app.use(bodyParser.json());
 
 const vapidKeys = {
