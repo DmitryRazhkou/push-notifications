@@ -164,7 +164,7 @@ async function getSessionToken() {
     );    
 
     console.log('Ответ от Directual:', response.data);
-    return response.data.session;
+    return response.data.result.token;
   } catch (error) {
     console.error('Ошибка при получении session token:', error.response ? error.response.data : error.message);
     throw error;
