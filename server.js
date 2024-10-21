@@ -153,18 +153,26 @@ app.get('/syncSubscriptions', checkSession, async (req, res) => {
 // Функция для получения session token
 async function getSessionToken() {
   try {
-    const response = await axios.post('https://api.directual.com/good/api/v5/auth', {
-      appID: '3cf35b4f-e1cf-48a4-94ad-0956906eb36b',
-      login: 'webpush',
-      password: 'webpushWebpush@123'
-    });
+    console.log('Отправляем запрос на получение session token...');
+    
+    const response = await axios.post('https://api.directual.com/good/api/v5/auth', 
+      {
+        provider: "rest",
+        username: "webpush",
+        password: 'webpushWebpush@123'
+      }, 
+      {
+        params: {
+          appID: '3cf35b4f-e1cf-48a4-94ad-0956906eb36b'
+        }
+      }
+    );
 
-    const sessionToken = response.data.session; // Извлекаем session token
-    console.log('Получен session token:', sessionToken);
-    return sessionToken;
+    console.log('Ответ от Directual:', response.data);
+    return response.data.session;
   } catch (error) {
-    console.error('Ошибка при получении session token:', error);
-    throw error; // Пробрасываем ошибку для обработки в вызывающем коде
+    console.error('Ошибка при получении session token:', error.response ? error.response.data : error.message);
+    throw error;
   }
 }
 
