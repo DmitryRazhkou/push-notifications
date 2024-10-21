@@ -155,18 +155,13 @@ async function getSessionToken() {
   try {
     console.log('Отправляем запрос на получение session token...');
     
-    const response = await axios.post('https://api.directual.com/good/api/v5/auth', 
+    const response = await axios.post(`https://api.directual.com/good/api/v5/auth?appID=3cf35b4f-e1cf-48a4-94ad-0956906eb36b`, 
       {
         provider: "rest",
         username: "webpush",
         password: 'webpushWebpush@123'
-      }, 
-      {
-        params: {
-          appID: '3cf35b4f-e1cf-48a4-94ad-0956906eb36b'
-        }
       }
-    );
+    );    
 
     console.log('Ответ от Directual:', response.data);
     return response.data.session;
