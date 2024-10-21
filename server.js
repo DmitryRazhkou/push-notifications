@@ -37,12 +37,15 @@ function checkSession(req, res, next) {
 // Получение подписок с Directual API и синхронизация с локальными подписками
 async function syncSubscriptions(session) {
   console.log('Начало синхронизации подписок с Directual API...'); // Логирование начала запроса
+  console.log('Токен сессии:', session); // Логирование токена сессии
   try {
     const response = await axios.get('https://api.directual.com/good/api/v7/webpushes_subscribers', {
       headers: {
         Authorization: `Bearer ${session}`,
       },
     });
+
+    console.log('Ответ от Directual API syncSubscriptions:', response.data); // Логирование ответа от Directual API
 
     const directualSubscriptions = response.data.payload;
 
