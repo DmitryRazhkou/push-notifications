@@ -150,6 +150,24 @@ app.get('/syncSubscriptions', checkSession, async (req, res) => {
   }
 });
 
+// Функция для получения session token
+async function getSessionToken() {
+  try {
+    const response = await axios.post('https://api.directual.com/good/api/v5/auth', {
+      appID: '3cf35b4f-e1cf-48a4-94ad-0956906eb36b',
+      login: 'webpush',
+      password: 'webpushWebpush@123'
+    });
+
+    const sessionToken = response.data.session; // Извлекаем session token
+    console.log('Получен session token:', sessionToken);
+    return sessionToken;
+  } catch (error) {
+    console.error('Ошибка при получении session token:', error);
+    throw error; // Пробрасываем ошибку для обработки в вызывающем коде
+  }
+}
+
 // Настройки HTTPS сервера
 const options = {
   key: fs.readFileSync('./private.key', 'utf8'),
@@ -157,6 +175,15 @@ const options = {
 };
 
 const PORT = 8000;
-https.createServer(options, app).listen(PORT, () => {
+https.createServer(options, app).listen(PORT, async () => {
   console.log(`Сервер запущен на порту ${PORT}`);
+
+  try {
+    // Получение session token и синхронизация подписок при старте сервера
+    const sessionToken = await getSessionToken();
+    await syncSubscriptions(sessionToken);
+    console.log('Подписки успешно синхронизированы при старте сервера.');
+  } catch (error) {
+    console.error('Ошибка при получении session token или синхронизации подписок при старте сервера:', error);
+  }
 });
