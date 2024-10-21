@@ -4,7 +4,7 @@ const webPush = require('web-push');
 const bodyParser = require('body-parser');
 const fs = require('fs');
 const cors = require('cors');
-
+const axios = require('axios');
 
 const app = express();
 
@@ -22,24 +22,94 @@ webPush.setVapidDetails(
   vapidKeys.privateKey
 );
 
-const subscriptions = [];
+let subscriptions = []; // Локальное хранилище подписок
 
-app.post('/subscribe', (req, res) => {
+// Middleware для проверки наличия сессии
+function checkSession(req, res, next) {
+  const session = req.query.session; // Сессия передается в query параметре
+  if (!session) {
+    return res.status(401).json({ error: 'Session token is required' });
+  }
+  req.session = session;
+  next();
+}
+
+// Получение подписок с Directual API и синхронизация с локальными подписками
+async function syncSubscriptions(session) {
+  console.log('Начало синхронизации подписок с Directual API...'); // Логирование начала запроса
+  try {
+    const response = await axios.get('https://api.directual.com/good/api/v7/webpushes_subscribers', {
+      headers: {
+        Authorization: `Bearer ${session}`,
+      },
+    });
+
+    const directualSubscriptions = response.data.payload;
+
+    // Логирование данных, которые пришли от Directual API
+    console.log('Ответ от Directual API:', directualSubscriptions);
+
+    subscriptions = directualSubscriptions.map((sub) => ({
+      endpoint: sub.pushNotificationId,
+      userId: sub.userId,
+    }));
+
+    console.log('Синхронизированные подписки:', subscriptions); // Логирование синхронизированных подписок
+  } catch (error) {
+    console.error('Ошибка при синхронизации подписок:', error); // Логирование ошибки
+  }
+}
+
+// Роут для подписки и добавления в Directual API
+app.post('/subscribe', checkSession, async (req, res) => {
   const subscription = req.body;
 
+  const existingSubscription = subscriptions.some(
+    (sub) => sub.endpoint === subscription.endpoint
+  );
+
+  if (existingSubscription) {
+    return res.status(409).json({ message: 'Подписка уже существует.' });
+  }
+
+  // Добавляем подписку в локальный список
   subscriptions.push(subscription);
+  console.log('Новая подписка добавлена локально:', subscription);
 
-  res.status(201).json({ message: 'Подписка получена.' });
+  try {
+    // Отправляем подписку на Directual API
+    const response = await axios.post(
+      'https://api.directual.com/good/api/v5/data/webpushes_subscribers/v1_back_webpushes_webpushes_subscribers_subscribe',
+      {
+        pushNotificationId: subscription.endpoint,
+        userId: subscription.userId || 'default_user_id', // Замените userId на актуальный ID пользователя
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${req.session}`, // Передача токена сессии в заголовках
+        },
+      }
+    );
+
+    console.log('Подписка отправлена на Directual:', response.data);
+
+    // Синхронизируем подписки после успешного добавления
+    await syncSubscriptions(req.session);
+
+    res.status(201).json({ message: 'Подписка успешно добавлена и синхронизирована.' });
+  } catch (error) {
+    console.error('Ошибка при отправке подписки на Directual:', error);
+    res.status(500).json({ error: 'Ошибка при добавлении подписки' });
+  }
 });
-console.log('subscriptions', subscriptions);
 
+// Роут для отправки уведомлений
 app.post('/sendNotification', (req, res) => {
   const { title, message } = req.body;
-  console.log(title, message);
+
   if (!title || !message) {
     return res.status(400).json({ error: 'Title and message are required' });
   }
-  console.log('subscriptions', subscriptions);
 
   const notificationPayload = JSON.stringify({
     title: title || 'NEW NOTIFICATION',
@@ -47,29 +117,40 @@ app.post('/sendNotification', (req, res) => {
     icon: '/investra-192-192.png',
   });
 
-  console.log('Sending notifications with payload:', notificationPayload);
-
   const promises = subscriptions.map((subscription) => {
     return webPush.sendNotification(subscription, notificationPayload)
       .then(() => {
-        console.log(`Notification sent successfully to subscription: ${subscription.endpoint}`);
+        console.log(`Уведомление успешно отправлено: ${subscription.endpoint}`);
       })
       .catch((error) => {
-        console.error(`Error sending notification to subscription: ${subscription.endpoint}`, error);
+        console.error(`Ошибка при отправке уведомления на подписку: ${subscription.endpoint}`, error);
       });
   });
 
   Promise.all(promises)
     .then(() => {
-      console.log('All notifications sent successfully');
+      console.log('Все уведомления успешно отправлены');
       res.sendStatus(200);
     })
     .catch((error) => {
-      console.error('Error sending notifications:', error);
+      console.error('Ошибка при отправке уведомлений:', error);
       res.sendStatus(500);
     });
 });
 
+// Запуск синхронизации при старте сервера
+app.get('/syncSubscriptions', checkSession, async (req, res) => {
+  try {
+    console.log('Запрос синхронизации подписок от клиента...'); // Логирование запроса синхронизации
+    await syncSubscriptions(req.session);
+    res.status(200).json({ message: 'Подписки синхронизированы.' });
+  } catch (error) {
+    console.error('Ошибка при синхронизации через роут:', error);
+    res.status(500).json({ error: 'Ошибка при синхронизации подписок.' });
+  }
+});
+
+// Настройки HTTPS сервера
 const options = {
   key: fs.readFileSync('./private.key', 'utf8'),
   cert: fs.readFileSync('./certificate.crt', 'utf8'),
@@ -77,5 +158,5 @@ const options = {
 
 const PORT = 8000;
 https.createServer(options, app).listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`Сервер запущен на порту ${PORT}`);
 });
