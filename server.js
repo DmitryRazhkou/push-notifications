@@ -22,11 +22,13 @@ webPush.setVapidDetails(
   vapidKeys.privateKey
 );
 
-let subscriptions = []; // Локальное хранилище подписок
+const PORT = 8000;
+const appID = '3cf35b4f-e1cf-48a4-94ad-0956906eb36b';
+let subscriptions = [];
+let sessionToken = '';
 
-// Middleware для проверки наличия сессии
 function checkSession(req, res, next) {
-  const session = req.query.session; // Сессия передается в query параметре
+  const session = req.query.session;
   if (!session) {
     return res.status(401).json({ error: 'Session token is required' });
   }
@@ -34,18 +36,16 @@ function checkSession(req, res, next) {
   next();
 }
 
-// Получение подписок с Directual API и синхронизация с локальными подписками
 async function syncSubscriptions(session) {
-  console.log('Начало синхронизации подписок с Directual API...'); // Логирование начала запроса
-  console.log('Токен сессии:', session); // Логирование токена сессии
+  console.log('Начало синхронизации подписок с Directual API...');
+  console.log('Токен сессии:', session);
   try {
-    const response = await axios.get(`https://api.directual.com/good/api/v5/data/webpushes_subscribers/v1_back_webpushes_webpushes_subscribers_subscribe?appID=3cf35b4f-e1cf-48a4-94ad-0956906eb36b&sessionID=${session}`);
+    const response = await axios.get(`https://api.directual.com/good/api/v5/data/webpushes_subscribers/v1_back_webpushes_webpushes_subscribers_subscribe?appID=${appID}&sessionID=${session}`);
 
-    console.log('Ответ от Directual API syncSubscriptions:', response.data); // Логирование ответа от Directual API
+    console.log('Ответ от Directual API syncSubscriptions:', response.data);
 
     const directualSubscriptions = response.data.payload;
 
-    // Логирование данных, которые пришли от Directual API
     console.log('Ответ от Directual API:', directualSubscriptions);
 
     subscriptions = directualSubscriptions.map((sub) => ({
@@ -53,13 +53,12 @@ async function syncSubscriptions(session) {
       userId: sub.userId,
     }));
 
-    console.log('Синхронизированные подписки:', subscriptions); // Логирование синхронизированных подписок
+    console.log('Синхронизированные подписки:', subscriptions);
   } catch (error) {
-    console.error('Ошибка при синхронизации подписок:', error); // Логирование ошибки
+    console.error('Ошибка при синхронизации подписок:', error);
   }
 }
 
-// Роут для подписки и добавления в Directual API
 app.post('/subscribe', checkSession, async (req, res) => {
   const subscription = req.body;
 
@@ -71,28 +70,19 @@ app.post('/subscribe', checkSession, async (req, res) => {
     return res.status(409).json({ message: 'Подписка уже существует.' });
   }
 
-  // Добавляем подписку в локальный список
   subscriptions.push(subscription);
   console.log('Новая подписка добавлена локально:', subscription);
 
   try {
-    // Отправляем подписку на Directual API
     const response = await axios.post(
-      'https://api.directual.com/good/api/v5/data/webpushes_subscribers/v1_back_webpushes_webpushes_subscribers_subscribe',
+      `https://api.directual.com/good/api/v5/data/webpushes_subscribers/v1_back_webpushes_webpushes_subscribers_subscribe?appID=${appID}&sessionID=${sessionToken}`,
       {
         pushNotificationId: subscription.endpoint,
-        userId: subscription.userId || 'default_user_id', // Замените userId на актуальный ID пользователя
+        userId: subscription.userId,
       },
-      {
-        headers: {
-          Authorization: `Bearer ${req.session}`, // Передача токена сессии в заголовках
-        },
-      }
     );
 
     console.log('Подписка отправлена на Directual:', response.data);
-
-    // Синхронизируем подписки после успешного добавления
     await syncSubscriptions(req.session);
 
     res.status(201).json({ message: 'Подписка успешно добавлена и синхронизирована.' });
@@ -102,7 +92,6 @@ app.post('/subscribe', checkSession, async (req, res) => {
   }
 });
 
-// Роут для отправки уведомлений
 app.post('/sendNotification', (req, res) => {
   const { title, message } = req.body;
 
@@ -137,10 +126,9 @@ app.post('/sendNotification', (req, res) => {
     });
 });
 
-// Запуск синхронизации при старте сервера
 app.get('/syncSubscriptions', checkSession, async (req, res) => {
   try {
-    console.log('Запрос синхронизации подписок от клиента...'); // Логирование запроса синхронизации
+    console.log('Запрос синхронизации подписок от клиента...');
     await syncSubscriptions(req.session);
     res.status(200).json({ message: 'Подписки синхронизированы.' });
   } catch (error) {
@@ -149,12 +137,11 @@ app.get('/syncSubscriptions', checkSession, async (req, res) => {
   }
 });
 
-// Функция для получения session token
 async function getSessionToken() {
   try {
     console.log('Отправляем запрос на получение session token...');
     
-    const response = await axios.post(`https://api.directual.com/good/api/v5/auth?appID=3cf35b4f-e1cf-48a4-94ad-0956906eb36b`, 
+    const response = await axios.post(`https://api.directual.com/good/api/v5/auth?appID=${appID}`, 
       {
         provider: "rest",
         username: "webpush",
@@ -170,20 +157,18 @@ async function getSessionToken() {
   }
 }
 
-// Настройки HTTPS сервера
 const options = {
   key: fs.readFileSync('./private.key', 'utf8'),
   cert: fs.readFileSync('./certificate.crt', 'utf8'),
 };
 
-const PORT = 8000;
 https.createServer(options, app).listen(PORT, async () => {
   console.log(`Сервер запущен на порту ${PORT}`);
 
   try {
-    // Получение session token и синхронизация подписок при старте сервера
-    const sessionToken = await getSessionToken();
-    await syncSubscriptions(sessionToken);
+    const tempSessionToken = await getSessionToken();
+    sessionToken = tempSessionToken;
+    await syncSubscriptions(tempSessionToken);
     console.log('Подписки успешно синхронизированы при старте сервера.');
   } catch (error) {
     console.error('Ошибка при получении session token или синхронизации подписок при старте сервера:', error);
